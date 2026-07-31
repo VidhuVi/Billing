@@ -19,6 +19,13 @@ export default function ExperimentsPage() {
   const [delayCountdown, setDelayCountdown] = useState(0);
 
   const [pushingId, setPushingId] = useState<string | null>(null);
+  const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+  const [jsonModal, setJsonModal] = useState<any | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4000);
+  };
 
   const fetchEvals = async () => {
     try {
@@ -123,7 +130,7 @@ export default function ExperimentsPage() {
       }
 
       if (!bestModel) {
-        alert("No valid extraction found to push.");
+        showToast("No valid extraction found to push.", "error");
         setPushingId(null);
         return;
       }
@@ -136,22 +143,55 @@ export default function ExperimentsPage() {
 
       if (res.ok) {
         const data = await res.json();
-        alert(`Successfully pushed to Zoho!\nExpense ID: ${data.expense_id}`);
+        showToast(`Successfully pushed to Zoho! Expense ID: ${data.expense_id}`, "success");
       } else {
         const err = await res.json();
-        alert(`Failed to push to Zoho: ${err.detail || 'Unknown error'}`);
+        showToast(`Failed to push to Zoho: ${err.detail || 'Unknown error'}`, "error");
       }
     } catch (e: any) {
-      alert(`Error pushing to Zoho: ${e.message}`);
+      showToast(`Error pushing to Zoho: ${e.message}`, "error");
     } finally {
       setPushingId(null);
     }
   };
 
   return (
-    <div className="flex h-full bg-[#0B0E14]">
+    <div className="flex h-full bg-[#0B0E14] relative">
+      
+      {/* TOAST NOTIFICATION */}
+      {toast && (
+        <div className={`fixed bottom-6 right-6 z-50 px-6 py-4 rounded-lg shadow-2xl flex items-center gap-3 animate-bounce-in ${toast.type === 'success' ? 'bg-[#00a572] text-white' : 'bg-red-500 text-white'}`}>
+          <span className="material-symbols-outlined">
+            {toast.type === 'success' ? 'check_circle' : 'error'}
+          </span>
+          <p className="font-semibold">{toast.message}</p>
+        </div>
+      )}
+
+      {/* JSON MODAL */}
+      {jsonModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-[#111827] border border-[#1F2937] rounded-xl w-full max-w-3xl max-h-[80vh] flex flex-col shadow-2xl">
+            <div className="p-4 border-b border-[#1F2937] flex justify-between items-center bg-[#1a2130] rounded-t-xl">
+              <h3 className="text-white font-bold flex items-center gap-2">
+                <span className="material-symbols-outlined text-[#4d8eff]">data_object</span>
+                Extraction JSON Result (ID: {jsonModal.id})
+              </h3>
+              <button onClick={() => setJsonModal(null)} className="text-[#8b949e] hover:text-white transition-colors">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            <div className="p-6 overflow-auto bg-[#0B0E14] rounded-b-xl">
+              <pre className="text-sm text-[#c2c6d6] font-mono whitespace-pre-wrap">
+                {JSON.stringify(jsonModal.results_json, null, 2)}
+              </pre>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Sidebar />
-      <main className="flex-1 flex flex-col overflow-hidden bg-[#0B0E14] p-8">
+      <main className="flex-1 flex flex-col overflow-hidden bg-[#0B0E14] p-8 relative z-10">
         <header className="mb-8 flex justify-between items-center">
           <div>
             <div className="flex items-center gap-3 mb-2">
@@ -328,7 +368,7 @@ export default function ExperimentsPage() {
                       <td className="px-6 py-4 text-right flex justify-end gap-3">
                         <button 
                           className="text-[#4d8eff] hover:underline"
-                          onClick={() => alert('Detailed view for ID: ' + ev.id + '\n\n' + JSON.stringify(ev.results_json, null, 2))}
+                          onClick={() => setJsonModal(ev)}
                         >
                           View JSON
                         </button>
