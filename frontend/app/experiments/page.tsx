@@ -18,6 +18,8 @@ export default function ExperimentsPage() {
   const [processIndex, setProcessIndex] = useState(0);
   const [delayCountdown, setDelayCountdown] = useState(0);
 
+  const [pushingId, setPushingId] = useState<string | null>(null);
+
   const fetchEvals = async () => {
     try {
       const res = await fetch('http://localhost:8000/api/evaluations');
@@ -101,7 +103,49 @@ export default function ExperimentsPage() {
 
     setProcessing(false);
     setBatchFiles([]);
+    setGroundTruths([]);
     fetchEvals(); // Refresh table
+  };
+
+  const handlePushToZoho = async (ev: any) => {
+    setPushingId(ev.id.toString());
+    try {
+      // Find the model with the highest accuracy
+      const models = ev.results_json?.results || {};
+      let bestModel = null;
+      let highestAccuracy = -1;
+
+      for (const [modelId, result] of Object.entries<any>(models)) {
+        if ((result.overall_accuracy || 0) > highestAccuracy) {
+          highestAccuracy = result.overall_accuracy;
+          bestModel = result;
+        }
+      }
+
+      if (!bestModel) {
+        alert("No valid extraction found to push.");
+        setPushingId(null);
+        return;
+      }
+
+      const res = await fetch('http://localhost:8000/api/zoho', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expense_data: bestModel.extraction })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        alert(`Successfully pushed to Zoho!\nExpense ID: ${data.expense_id}`);
+      } else {
+        const err = await res.json();
+        alert(`Failed to push to Zoho: ${err.detail || 'Unknown error'}`);
+      }
+    } catch (e: any) {
+      alert(`Error pushing to Zoho: ${e.message}`);
+    } finally {
+      setPushingId(null);
+    }
   };
 
   return (
@@ -214,9 +258,9 @@ export default function ExperimentsPage() {
           <div className="flex flex-col flex-1 space-y-6 overflow-hidden">
             {/* Summary Dashboard */}
             {!loading && evaluations.length > 0 && (
-              <div className="bg-[#111827] border border-[#1F2937] rounded-xl p-6">
-                <h2 className="text-xl font-bold text-white mb-4">Overall Performance Dashboard</h2>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-[#111827] border border-[#1F2937] rounded-xl p-4 flex-shrink-0">
+                <h2 className="text-sm font-bold text-white uppercase tracking-wider mb-3">Overall Performance Dashboard</h2>
+                <div className="flex gap-3 overflow-x-auto pb-2">
                   {Object.entries(
                     evaluations.reduce((acc, ev) => {
                       const models = ev.results_json?.results || {};
@@ -229,16 +273,16 @@ export default function ExperimentsPage() {
                       return acc;
                     }, {} as Record<string, {total: number, count: number, cost: number}>)
                   ).map(([model, stats]) => (
-                    <div key={model} className="bg-[#1a2130] p-4 rounded-lg border border-[#2D3342]">
-                      <h3 className="text-[#c2c6d6] font-bold mb-2">{model}</h3>
+                    <div key={model} className="bg-[#1a2130] p-3 rounded-lg border border-[#2D3342] min-w-[220px] flex-shrink-0">
+                      <h3 className="text-[#c2c6d6] font-bold text-sm mb-2 truncate">{model}</h3>
                       <div className="flex justify-between items-end">
                         <div>
-                          <p className="text-xs text-[#8b949e] uppercase">Avg Accuracy</p>
-                          <p className="text-2xl font-bold text-[#00a572]">{(stats.total / stats.count).toFixed(1)}%</p>
+                          <p className="text-[10px] text-[#8b949e] uppercase">Avg Accuracy</p>
+                          <p className="text-xl font-bold text-[#00a572]">{(stats.total / stats.count).toFixed(1)}%</p>
                         </div>
                         <div className="text-right">
-                          <p className="text-xs text-[#8b949e] uppercase">Total Cost</p>
-                          <p className="text-sm font-bold text-white">${stats.cost.toFixed(4)}</p>
+                          <p className="text-[10px] text-[#8b949e] uppercase">Total Cost</p>
+                          <p className="text-xs font-bold text-white">${stats.cost.toFixed(4)}</p>
                         </div>
                       </div>
                     </div>
@@ -281,12 +325,19 @@ export default function ExperimentsPage() {
                       <td className="px-6 py-4 font-mono text-xs">{ev.id}</td>
                       <td className="px-6 py-4">{ev.filename}</td>
                       <td className="px-6 py-4">{new Date(ev.created_at).toLocaleString()}</td>
-                      <td className="px-6 py-4 text-right">
+                      <td className="px-6 py-4 text-right flex justify-end gap-3">
                         <button 
                           className="text-[#4d8eff] hover:underline"
                           onClick={() => alert('Detailed view for ID: ' + ev.id + '\n\n' + JSON.stringify(ev.results_json, null, 2))}
                         >
                           View JSON
+                        </button>
+                        <button 
+                          className={`text-[#00a572] hover:underline ${pushingId === ev.id.toString() ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          onClick={() => handlePushToZoho(ev)}
+                          disabled={pushingId === ev.id.toString()}
+                        >
+                          {pushingId === ev.id.toString() ? 'Pushing...' : 'Push to Zoho'}
                         </button>
                       </td>
                     </tr>
