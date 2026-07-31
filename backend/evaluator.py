@@ -1,6 +1,7 @@
 import math
 from datetime import datetime
 from dateutil import parser as date_parser
+import re
 from thefuzz import fuzz
 from typing import Optional, List, Tuple
 from schemas import ExpenseExtraction, GroundTruthTarget, FieldEvalScore
@@ -144,6 +145,33 @@ def evaluate_extraction(extracted: ExpenseExtraction, target: Optional[GroundTru
         is_match=is_curr_match,
         match_score=100.0 if is_curr_match else 0.0,
         match_type="exact_string"
+    ))
+
+    # 5. Date Format Compliance
+    date_is_iso = bool(re.match(r"^\d{4}-\d{2}-\d{2}$", str(extracted.date))) if extracted.date else False
+    if target.date:
+        field_scores.append(FieldEvalScore(
+            field_name="Date ISO Format",
+            extracted_value=extracted.date,
+            target_value="YYYY-MM-DD",
+            confidence=1.0,
+            confidence_level="HIGH",
+            is_match=date_is_iso,
+            match_score=100.0 if date_is_iso else 0.0,
+            match_type="format_check"
+        ))
+
+    # 6. Hallucination Check (Strict penalty for inventing data when target is empty)
+    hallucinated_bill = (not target.bill_number) and (extracted.bill_number is not None and str(extracted.bill_number).strip() != "")
+    field_scores.append(FieldEvalScore(
+        field_name="Hallucination Check",
+        extracted_value="Fabricated Data" if hallucinated_bill else "Clean",
+        target_value="Clean",
+        confidence=1.0,
+        confidence_level="HIGH",
+        is_match=not hallucinated_bill,
+        match_score=0.0 if hallucinated_bill else 100.0,
+        match_type="hallucination_penalty"
     ))
 
     # Calculate weighted overall accuracy
